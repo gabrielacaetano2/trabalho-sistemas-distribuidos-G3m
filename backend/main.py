@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import asyncio
 import os
@@ -24,6 +25,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Montar pasta de imagens estaticas
+images_dir = "data/images"
+os.makedirs(images_dir, exist_ok=True)
+app.mount("/images", StaticFiles(directory=images_dir), name="images")
+
 
 class SearchRequest(BaseModel):
     query: str

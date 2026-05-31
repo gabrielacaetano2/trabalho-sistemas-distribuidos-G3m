@@ -3,21 +3,26 @@ from qdrant_client.http import models
 from qdrant_client.http.exceptions import UnexpectedResponse
 from config import settings
 import time
+import os
+
+_use_local_qdrant = False
 
 def get_qdrant_client():
-    """Conecta ao Qdrant com retries para aguardar inicializacao"""
-    retries = 5
-    while retries > 0:
-        try:
-            client = QdrantClient(url=settings.QDRANT_URL)
-            # Testar conexao
-            client.get_collections()
-            return client
-        except Exception as e:
-            print(f"Qdrant nao esta pronto ainda. Tentando novamente em 3 segundos... ({retries} tentativas restantes)")
-            time.sleep(3)
-            retries -= 1
-    raise Exception("Nao foi possivel conectar ao Qdrant.")
+    """Conecta ao Qdrant remoto. Se falhar, utiliza armazenamento local no disco"""
+    global _use_local_qdrant
+    if _use_local_qdrant:
+        return QdrantClient(path="data/qdrant_local")
+        
+    try:
+        # Tenta conectar rápido
+        client = QdrantClient(url=settings.QDRANT_URL, timeout=2.0)
+        client.get_collections()
+        return client
+    except Exception:
+        print("[FALLBACK] Qdrant server offline. Utilizando Qdrant local (em-disco) na pasta: data/qdrant_local")
+        _use_local_qdrant = True
+        os.makedirs("data/qdrant_local", exist_ok=True)
+        return QdrantClient(path="data/qdrant_local")
 
 def init_vector_db():
     """Garante que a colecao no Qdrant para embeddings de imagens exista"""
@@ -73,3 +78,4 @@ def search_similar_images(vector: list, limit: int = 6):
     except Exception as e:
         print(f"Erro ao buscar no Qdrant: {e}")
         return []
+

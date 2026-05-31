@@ -10,8 +10,17 @@ export default defineConfig({
     watch: {
       usePolling: true
     },
-    hmr: {
-      clientPort: 80 // Roteado pelo proxy reverso do Nginx
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/images': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      }
     }
   }
 })
+
