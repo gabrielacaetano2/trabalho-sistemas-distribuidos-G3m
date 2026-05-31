@@ -1,7 +1,7 @@
 from sentence_transformers import SentenceTransformer
 from PIL import Image
 import httpx
-from config import settings
+from ..config import settings
 
 _clip_model = None
 

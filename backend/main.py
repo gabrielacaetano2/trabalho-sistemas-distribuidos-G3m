@@ -5,11 +5,11 @@ from pydantic import BaseModel
 import asyncio
 import os
 
-from services.db import init_db, add_image_metadata, get_image_metadata, get_brand_rules, get_all_images
-from services.vector_db import init_vector_db, upsert_image_vector, search_similar_images
-from services.cache import get_cached_search, set_cached_search
-from services.ai import generate_text_embedding, generate_image_embedding, generate_explanation
-from services.mcp_client import call_mcp_tool, list_mcp_tools
+from .services.db import init_db, add_image_metadata, get_image_metadata, get_brand_rules, get_all_images
+from .services.vector_db import init_vector_db, upsert_image_vector, search_similar_images
+from .services.cache import get_cached_search, set_cached_search
+from .services.ai import generate_text_embedding, generate_image_embedding, generate_explanation
+from .services.mcp_client import call_mcp_tool, list_mcp_tools
 
 app = FastAPI(
     title="G3m API Gateway & Search Orchestrator",

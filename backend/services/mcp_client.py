@@ -1,5 +1,5 @@
 import httpx
-from config import settings
+from ..config import settings
 
 async def list_mcp_tools() -> list:
     """Consulta as ferramentas expostas pelo servidor MCP"""

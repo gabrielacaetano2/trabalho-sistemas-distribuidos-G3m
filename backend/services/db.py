@@ -3,7 +3,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 import os
-from config import settings
+from backend.config import settings
 
 USE_SQLITE = False
 SQLITE_DB_PATH = "data/g3m.db"

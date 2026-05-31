@@ -1,7 +1,7 @@
 import redis
 import json
 import hashlib
-from config import settings
+from backend.config import settings
 
 _redis_client = None
 
@@ -18,6 +18,8 @@ def get_redis_client():
     return _redis_client
 
 def _get_query_hash(query: str) -> str:
+    """Gera hash MD5 para a chave do cache para normalizar strings de busca"""
+    return hashlib.md5(query.strip().lower().encode('utf-8')).hexdigest()
     """Gera hash MD5 para a chave do cache para normalizar strings de busca"""
     return hashlib.md5(query.strip().lower().encode('utf-8')).hexdigest()
 

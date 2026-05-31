@@ -1,7 +1,7 @@
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.exceptions import UnexpectedResponse
-from config import settings
+from backend.config import settings
 import time
 import os
 
