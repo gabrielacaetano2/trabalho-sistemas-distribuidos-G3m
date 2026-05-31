@@ -1,23 +1,42 @@
-from fastapi import FastAPI, HTTPException, Query
+"""
+G3m API Gateway — FastAPI
+Recebe requisições do Frontend e delega ao Orquestrador LangChain.
+Arquitetura:
+  Frontend → Nginx → [FastAPI Gateway] → Orchestrator (LangChain)
+                                       → Redis (cache)
+                   → MCP Agent (SSE)
+                   → Embedding + Qdrant + PostgreSQL + Ollama
+"""
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import asyncio
 import os
 
-from .services.db import init_db, add_image_metadata, get_image_metadata, get_brand_rules, get_all_images
-from .services.vector_db import init_vector_db, upsert_image_vector, search_similar_images
-from .services.cache import get_cached_search, set_cached_search
-from .services.ai import generate_text_embedding, generate_image_embedding, generate_explanation
-from .services.mcp_client import call_mcp_tool, list_mcp_tools
+# Camada de Orquestração (LangChain)
+from .services.orchestrator import orchestrate_search
 
+# Serviços auxiliares para indexação e consulta direta
+from .services.db import init_db, add_image_metadata, get_image_metadata, get_all_images
+from .services.vector_db import init_vector_db, upsert_image_vector
+from .services.ai import generate_image_embedding
+from .services.mcp_client import list_mcp_tools
+
+# ─────────────────────────────────────────────────────────────────────────────
+# App FastAPI
+# ─────────────────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="G3m API Gateway & Search Orchestrator",
-    description="Orquestrador central de busca semantica distribuida utilizando RAG e MCP",
-    version="1.0.0"
+    title="G3m API Gateway",
+    description=(
+        "Orquestrador distribuído de busca semântica de imagens usando "
+        "RAG (Retrieval-Augmented Generation) e MCP (Model Context Protocol). "
+        "Arquitetura: Frontend → Nginx → FastAPI → LangChain Orchestrator → "
+        "Qdrant + PostgreSQL + Redis + MCP Agent + Ollama/Llama 3"
+    ),
+    version="2.0.0"
 )
 
-# Configurar CORS para permitir chamadas do frontend
+# CORS — permite chamadas do frontend React
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,199 +45,118 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Montar pasta de imagens estaticas
+# Imagens estáticas servidas diretamente pelo backend (Nginx faz o proxy em prod)
 images_dir = "data/images"
 os.makedirs(images_dir, exist_ok=True)
 app.mount("/images", StaticFiles(directory=images_dir), name="images")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Modelos de Request
+# ─────────────────────────────────────────────────────────────────────────────
 class SearchRequest(BaseModel):
     query: str
-    category: str = "corporativo"  # categoria para regras de design e mcp trends
+    category: str = "corporativo"
 
 class IndexRequest(BaseModel):
     filename: str
     description: str
     author: str = "Desconhecido"
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Startup — inicializa bancos de dados
+# ─────────────────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup_event():
-    """Inicializa os servicos distribuidos na subida do servidor"""
-    print("Inicializando bancos de dados...")
-    init_db()
-    init_vector_db()
-    print("Servicos distribuidos inicializados com sucesso!")
+    print("[Gateway] Inicializando serviços distribuídos...")
+    init_db()        # PostgreSQL (ou SQLite fallback)
+    init_vector_db() # Qdrant (ou in-memory fallback)
+    print("[Gateway] Todos os serviços inicializados com sucesso!")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/")
-def read_root():
+def health_check():
+    """Health check do Gateway."""
     return {
         "status": "healthy",
-        "service": "G3m Search Orchestrator",
-        "mcp_connection": "configured",
-        "qdrant_connection": "configured"
+        "service": "G3m API Gateway",
+        "version": "2.0.0",
+        "orchestrator": "LangChain",
+        "mcp_protocol": "SSE",
+        "llm": "Ollama / Llama 3"
     }
+
 
 @app.get("/tools")
 async def list_available_mcp_tools():
-    """Endpoint para inspecionar ferramentas disponiveis no MCP Server"""
+    """Lista as ferramentas disponíveis no servidor MCP via protocolo MCP/SSE."""
     tools = await list_mcp_tools()
     return {"mcp_server_tools": tools}
 
+
 @app.post("/search")
 async def search_images(req: SearchRequest):
+    """
+    Endpoint principal de busca semântica.
+    Delega ao Orquestrador LangChain que coordena:
+    Cache → Embedding → Qdrant → PostgreSQL → MCP Agent → LLM → Resposta
+    """
     query = req.query.strip()
     if not query:
-        raise HTTPException(status_code=400, detail="A query de busca nao pode estar vazia.")
-    
-    # 1. Verificar Cache (Redis)
-    cached_result = get_cached_search(query)
-    if cached_result:
-        return cached_result
-    
-    # 2. Gerar Embedding do Texto de Busca (OpenCLIP)
+        raise HTTPException(status_code=400, detail="A query não pode estar vazia.")
+
     try:
-        query_vector = generate_text_embedding(query)
+        result = await orchestrate_search(query=query, category=req.category)
+        return result
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao gerar embedding do texto: {str(e)}")
-        
-    # 3. Busca por Similaridade Vetorial (Qdrant)
-    hits = search_similar_images(query_vector, limit=6)
-    if not hits:
-        # Se nao houver resultados vetoriais, retornar payload vazio
-        response_data = {
-            "query": query,
-            "explanation": "Nenhuma imagem correspondente encontrada na base vetorial.",
-            "mcp_info": {},
-            "results": []
-        }
-        return response_data
-        
-    # 4. Obter Metadados Estruturados das Imagens (PostgreSQL)
-    results = []
-    top_image_metadata = None
-    for hit in hits:
-        img_id = hit["image_id"]
-        meta = get_image_metadata(img_id)
-        if meta:
-            # Normalizar caminhos para exibicao no frontend
-            # O frontend acessa via /images/<filename> que o Nginx serve
-            filename = os.path.basename(meta["path"])
-            web_url = f"/images/{filename}"
-            
-            results.append({
-                "id": meta["id"],
-                "path": meta["path"],
-                "filename": meta["filename"],
-                "description": meta["description"],
-                "author": meta["author"],
-                "url": web_url,
-                "score": float(hit["score"])
-            })
-            
-            if not top_image_metadata:
-                top_image_metadata = meta
+        raise HTTPException(status_code=500, detail=f"Erro interno no orquestrador: {str(e)}")
 
-    # 5. Executar ferramentas MCP em paralelo para o resultado principal
-    mcp_tasks = []
-    
-    # Ferramenta 1: Extrair paleta de cores dominante da imagem mais similar
-    if top_image_metadata:
-        mcp_tasks.append(
-            call_mcp_tool("get_color_palette", {"image_path": top_image_metadata["path"], "num_colors": 5})
-        )
-    else:
-        mcp_tasks.append(asyncio.sleep(0, result={"status": "skip"}))
-        
-    # Ferramenta 2: Consultar tendencias de design para a categoria
-    mcp_tasks.append(
-        call_mcp_tool("get_design_trends", {"category": req.category})
-    )
-    
-    # Aguarda a execucao distribuida das ferramentas MCP
-    mcp_results = await asyncio.gather(*mcp_tasks)
-    
-    color_palette = []
-    design_trends = {}
-    
-    if mcp_results[0].get("status") == "success":
-        color_palette = mcp_results[0]["result"]["palette"]
-        
-    if mcp_results[1].get("status") == "success":
-        design_trends = mcp_results[1]["result"]
-
-    # 6. Recuperar Normas e Diretrizes da Marca (PostgreSQL - RAG Contexto)
-    brand_rules = get_brand_rules(req.category)
-    
-    # 7. Formar contexto para o Llama 3 explicar a busca (RAG)
-    mcp_context_str = f"Paleta de cores extraida da imagem: {', '.join(color_palette)}\n"
-    if design_trends:
-        mcp_context_str += f"Tendencias de design recomendadas: {', '.join(design_trends.get('key_concepts', []))} (Vibe: {design_trends.get('general_vibe')})"
-        
-    top_image_desc = top_image_metadata["description"] if top_image_metadata else "Nenhuma descricao"
-    
-    # Chamar Ollama com Llama 3
-    explanation = await generate_explanation(
-        query=query,
-        image_description=top_image_desc,
-        brand_rules=brand_rules,
-        metadata=top_image_metadata or {},
-        mcp_context=mcp_context_str
-    )
-    
-    # 8. Montar o pacote de retorno final
-    response_data = {
-        "query": query,
-        "explanation": explanation,
-        "mcp_info": {
-            "color_palette": color_palette,
-            "design_trends": design_trends
-        },
-        "results": results
-    }
-    
-    # 9. Salvar no Cache (Redis) por 5 minutos (300 segundos)
-    set_cached_search(query, response_data, ttl=300)
-    
-    return response_data
 
 @app.post("/index")
 async def index_image(req: IndexRequest):
-    """Indexa uma nova imagem na base vetorial e relacional"""
-    # Presume que a imagem ja foi copiada para /data/images/
-    image_path = os.path.join("/data/images", req.filename)
-    
+    """
+    Indexa uma nova imagem na base vetorial (Qdrant) e relacional (PostgreSQL).
+    A imagem deve estar previamente copiada para data/images/.
+    """
+    # Tenta primeiro o caminho local (dev) depois /data/images (Docker)
+    local_path = os.path.join("data", "images", req.filename)
+    docker_path = os.path.join("/data", "images", req.filename)
+    image_path = local_path if os.path.exists(local_path) else docker_path
+
     if not os.path.exists(image_path):
         raise HTTPException(
-            status_code=404, 
-            detail=f"Arquivo de imagem nao encontrado em {image_path}. Certifique-se de que a imagem esta na pasta mapeada."
+            status_code=404,
+            detail=f"Imagem '{req.filename}' não encontrada. Copie para data/images/."
         )
-        
+
     try:
-        # 1. Gerar Embedding Multimodal (OpenCLIP)
         vector = generate_image_embedding(image_path)
-        
-        # 2. Gravar Metadados no PostgreSQL
         image_id = add_image_metadata(
             path=image_path,
             filename=req.filename,
             description=req.description,
             author=req.author
         )
-        
-        # 3. Salvar Vetor no Qdrant
         upsert_image_vector(image_id=image_id, vector=vector)
-        
+
         return {
             "status": "success",
             "message": f"Imagem '{req.filename}' indexada com sucesso!",
             "id": image_id
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao indexar imagem: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao indexar: {str(e)}")
+
 
 @app.get("/images")
 def get_images():
-    """Retorna metadados de todas as imagens indexadas"""
+    """Retorna metadados de todas as imagens indexadas."""
     try:
         db_images = get_all_images()
         formatted = []
@@ -230,7 +168,7 @@ def get_images():
                 "description": img["description"],
                 "author": img["author"],
                 "url": f"/images/{filename}",
-                "date_created": img["date_created"]
+                "date_created": img.get("date_created")
             })
         return {"images": formatted}
     except Exception as e:

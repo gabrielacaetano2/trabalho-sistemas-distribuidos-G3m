@@ -1,10 +1,26 @@
+# API e servidor
 fastapi>=0.100.0
 uvicorn>=0.22.0
 pydantic>=2.0
+pydantic-settings>=2.0
+
+# LangChain — Orquestrador
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+
+# Bancos de dados
 redis>=4.6.0
 qdrant-client>=1.3.0
 psycopg2-binary>=2.9.6
+
+# IA / Embedding
 sentence-transformers>=2.2.2
 pillow>=9.5.0
-httpx>=0.24.1
 numpy>=1.24.0
+
+# MCP (protocolo e cliente SSE)
+mcp[cli]>=1.0.0
+
+# HTTP
+httpx>=0.24.1
