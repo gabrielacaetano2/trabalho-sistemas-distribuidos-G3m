@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: g3m-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: g3m
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - g3m-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: g3m-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - g3m-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: g3m-qdrant
+    restart: always
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - g3m-network
+
+  mcp-server:
+    build:
+      context: ./mcp_server
+    container_name: g3m-mcp-server
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+    networks:
+      - g3m-network
+
+  backend:
+    build:
+      context: ./backend
+    container_name: g3m-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://admin:admin_password@postgres:5432/g3m
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - MCP_SERVER_URL=http://mcp-server:8001/sse
+      - OLLAMA_URL=http://host.docker.internal:11434
+    volumes:
+      - ./data:/data
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+      - mcp-server
+    networks:
+      - g3m-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: g3m-frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - g3m-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: g3m-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./data/images:/usr/share/nginx/html/images:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - g3m-network
+
+networks:
+  g3m-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  qdrant_data:
