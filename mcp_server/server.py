@@ -175,5 +175,5 @@ async def get_weather(city: str = "São Paulo") -> dict:
 # Ponto de entrada — serve via SSE (protocolo MCP)
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Exposição via SSE para que o cliente MCP conecte em http://<host>:8001/sse
-    mcp.run(transport="sse", host="0.0.0.0", port=8001)
+    # Exposição via SSE para que o cliente MCP conecte em http://localhost:8001/sse
+    mcp.run(transport="sse", host="127.0.0.1", port=8001)
