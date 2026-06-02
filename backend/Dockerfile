@@ -10,19 +10,24 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements e instalar
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 # Copiar scripts e rodar pre-download do modelo CLIP
-COPY scripts/ /app/scripts/
-RUN python /app/scripts/download_models.py
+COPY backend/scripts/ /app/backend/scripts/
+RUN python /app/backend/scripts/download_models.py
 
 # Copiar o restante da aplicação
-COPY . .
+COPY backend/ /app/backend/
+
+# Garantir import do pacote backend
+ENV PYTHONPATH=/app
 
 # Criar os diretórios de dados locais caso não existam
 RUN mkdir -p /data/images /data/documents
 
+WORKDIR /app/backend
+
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -11,16 +11,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import httpx
 import os
 
-# Camada de Orquestração (LangChain)
-from .services.orchestrator import orchestrate_search
+# Config
+from .config import settings
 
 # Serviços auxiliares para indexação e consulta direta
 from .services.db import init_db, add_image_metadata, get_image_metadata, get_all_images
 from .services.vector_db import init_vector_db, upsert_image_vector
 from .services.ai import generate_image_embedding
 from .services.mcp_client import list_mcp_tools
+from .services.cache import get_cached_search, set_cached_search
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App FastAPI
@@ -46,7 +48,7 @@ app.add_middleware(
 )
 
 # Imagens estáticas servidas diretamente pelo backend (Nginx faz o proxy em prod)
-images_dir = "data/images"
+images_dir = "/data/images" if os.path.exists("/data/images") else "data/images"
 os.makedirs(images_dir, exist_ok=True)
 app.mount("/images", StaticFiles(directory=images_dir), name="images")
 
@@ -103,19 +105,37 @@ async def search_images(req: SearchRequest):
     """
     Endpoint principal de busca semântica.
     Delega ao Orquestrador LangChain que coordena:
-    Cache → Embedding → Qdrant → PostgreSQL → MCP Agent → LLM → Resposta
+
+    CORRIGIDO: fluxo atualizado para refletir o diagrama de arquitetura real.
+    Cache → MCP Agent (enriquece query) → Embedding (OpenCLIP) → Qdrant → PostgreSQL → LLM → Resposta
     """
     query = req.query.strip()
     if not query:
         raise HTTPException(status_code=400, detail="A query não pode estar vazia.")
 
+    cache_key = f"{req.category}:{query}"
+    cached = get_cached_search(cache_key)
+    if cached:
+        return cached
+
     try:
-        result = await orchestrate_search(query=query, category=req.category)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{settings.ORCHESTRATOR_URL}/orchestrate",
+                json={"query": query, "category": req.category}
+            )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=response.text
+            )
+        result = response.json()
+        set_cached_search(cache_key, result, ttl=300)
         return result
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro interno no orquestrador: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao chamar orquestrador: {str(e)}")
 
 
 @app.post("/index")

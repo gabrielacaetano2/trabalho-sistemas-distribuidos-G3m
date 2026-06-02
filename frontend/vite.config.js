@@ -12,12 +12,12 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://g3m-backend:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       },
       '/images': {
-        target: 'http://localhost:8000',
+        target: 'http://g3m-backend:8000',
         changeOrigin: true
       }
     }

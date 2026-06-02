@@ -15,9 +15,12 @@ class Settings:
     # Em Docker: http://mcp-server:8001/sse  |  Dev local: http://localhost:8001/sse
     MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "http://localhost:8001/sse")
 
+    # Orchestrator (servico dedicado LangChain)
+    ORCHESTRATOR_URL: str = os.getenv("ORCHESTRATOR_URL", "http://localhost:8002")
+
     # LLM (Ollama local)
     OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3.5:latest")
 
 settings = Settings()
 

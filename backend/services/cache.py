@@ -5,6 +5,7 @@ from backend.config import settings
 
 _redis_client = None
 
+
 def get_redis_client():
     """Retorna cliente Redis singleton com tratamento de conexao"""
     global _redis_client
@@ -17,43 +18,49 @@ def get_redis_client():
             return None
     return _redis_client
 
-def _get_query_hash(query: str) -> str:
-    """Gera hash MD5 para a chave do cache para normalizar strings de busca"""
-    return hashlib.md5(query.strip().lower().encode('utf-8')).hexdigest()
-    """Gera hash MD5 para a chave do cache para normalizar strings de busca"""
-    return hashlib.md5(query.strip().lower().encode('utf-8')).hexdigest()
 
-def get_cached_search(query: str):
+def _get_query_hash(cache_key: str) -> str:
+    """Gera hash MD5 para normalizar a chave do cache"""
+    return hashlib.md5(cache_key.strip().lower().encode('utf-8')).hexdigest()
+
+
+# CORRIGIDO: parâmetro renomeado de `query` para `cache_key` nas duas funções.
+# O parâmetro recebia strings compostas como "corporativo:mulher segurando caneca"
+# (categoria + query), não apenas a query. O nome `query` era enganoso.
+# Renomear para `cache_key` deixa claro que pode ser qualquer string identificadora.
+
+def get_cached_search(cache_key: str):
     """Busca o resultado cacheado de uma busca no Redis"""
     client = get_redis_client()
     if not client:
         return None
-    
-    cache_key = f"search:{_get_query_hash(query)}"
+
+    redis_key = f"search:{_get_query_hash(cache_key)}"
     try:
-        data = client.get(cache_key)
+        data = client.get(redis_key)
         if data:
-            print(f"Redis Cache HIT para busca: '{query}'")
+            print(f"Redis Cache HIT para: '{cache_key}'")
             return json.loads(data)
-        print(f"Redis Cache MISS para busca: '{query}'")
+        print(f"Redis Cache MISS para: '{cache_key}'")
         return None
     except Exception as e:
         print(f"Falha ao ler cache do Redis: {e}")
         return None
 
-def set_cached_search(query: str, results: dict, ttl: int = 300):
+
+def set_cached_search(cache_key: str, results: dict, ttl: int = 300):
     """Grava o resultado da busca no Redis com tempo de vida definido (TTL)"""
     client = get_redis_client()
     if not client:
         return
-    
-    cache_key = f"search:{_get_query_hash(query)}"
+
+    redis_key = f"search:{_get_query_hash(cache_key)}"
     try:
         client.setex(
-            cache_key,
+            redis_key,
             ttl,
             json.dumps(results)
         )
-        print(f"Resultados para a busca '{query}' persistidos no Redis Cache (TTL: {ttl}s).")
+        print(f"Cache salvo para '{cache_key}' (TTL: {ttl}s).")
     except Exception as e:
         print(f"Falha ao salvar cache no Redis: {e}")

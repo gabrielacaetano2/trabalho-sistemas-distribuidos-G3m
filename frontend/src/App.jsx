@@ -345,21 +345,17 @@ function App() {
                     </div>
                   )}
 
-                  {/* Tendências de Design trazidas via MCP */}
-                  {results.length > 0 && mcpInfo?.design_trends?.key_concepts && (
+                  {/* Tendências via Google Trends (MCP) */}
+                  {results.length > 0 && mcpInfo?.google_trends?.top_queries && (
                     <div className="info-item">
                       <span className="info-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <TrendingUp size={14} /> Conceitos Recomendados (MCP)
+                        <TrendingUp size={14} /> Termos em Alta (Google Trends)
                       </span>
                       <div className="tag-cloud">
-                        {mcpInfo.design_trends.key_concepts.map((concept, i) => (
-                          <span key={i} className="tag">{concept}</span>
+                        {mcpInfo.google_trends.top_queries.map((term, i) => (
+                          <span key={i} className="tag">{term}</span>
                         ))}
                       </div>
-                      <span className="info-label" style={{ marginTop: '0.5rem' }}>Vibe de Tendência</span>
-                      <span className="info-value" style={{ fontStyle: 'italic', fontSize: '0.85rem' }}>
-                        {mcpInfo.design_trends.general_vibe}
-                      </span>
                     </div>
                   )}
 

@@ -3,12 +3,15 @@ import sys
 import urllib.request
 import time
 
-# Adicionar pasta pai ao path para importar services
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# CORRIGIDO: removido sys.path.append que adicionava /app/backend ao path.
+# Isso fazia o Python importar services.ai como pacote top-level, quebrando
+# os imports relativos (from ..config import settings) dentro de ai.py.
+# PYTHONPATH=/app já está definido no Dockerfile, então basta usar
+# os imports absolutos com o prefixo backend.* abaixo.
 
-from services.db import get_db_connection, add_image_metadata, add_brand_rule
-from services.vector_db import init_vector_db, upsert_image_vector
-from services.ai import generate_image_embedding
+from backend.services.db import get_db_connection, add_image_metadata, add_brand_rule
+from backend.services.vector_db import init_vector_db, upsert_image_vector
+from backend.services.ai import generate_image_embedding
 
 # Regras de design padrão para popular o banco relacional (RAG)
 DEFAULT_RULES = [
@@ -59,7 +62,7 @@ SAMPLE_IMAGES = [
     {
         "filename": "minimalist_interior.jpg",
         "url": "https://images.unsplash.com/photo-1499951360447-b19be8fe80f5?w=800&q=80",
-        "description": "Ambiente de sala minimalista com uma mesa de trabalho limpa contendo apenas uma xicara de cafe e um computador em tons pastéis e neutros.",
+        "description": "Ambiente de sala minimalista com uma mesa de trabalho limpa contendo apenas uma xicara de cafe e um computador em tons pasteis e neutros.",
         "author": "Domenico Loia"
     },
     {
