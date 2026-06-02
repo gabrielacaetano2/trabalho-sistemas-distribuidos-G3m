@@ -134,8 +134,8 @@ async def orchestrate_search(query: str, category: str) -> dict:
 
     # ── 3. Embedding (OpenCLIP via SentenceTransformer) ───────────────────────
     try:
-        query_vector = generate_text_embedding(enriched_query)
-        print(f"[Orchestrator] Embedding gerado para query enriquecida: '{query}'")
+        query_vector = generate_text_embedding(query)
+        print(f"[Orchestrator] Embedding gerado para query: '{query}'")
     except Exception as e:
         raise RuntimeError(f"[Orchestrator] Falha ao gerar embedding: {e}")
 
@@ -167,6 +167,13 @@ async def orchestrate_search(query: str, category: str) -> dict:
     for hit, meta in zip(hits, metadata_list):
         if meta:
             filename = os.path.basename(meta["path"])
+            
+            # Normalizando o score bruto do CLIP (tipicamente máx 0.35 para clip-ViT-B-32)
+            # para uma escala 0-1. Isso garante que o frontend exiba ~100% de similaridade
+            # para matches excelentes, em vez de mostrar "< 35%".
+            raw_score = float(hit["score"])
+            normalized_score = min(raw_score / 0.35, 1.0) if raw_score > 0 else 0.0
+
             results.append({
                 "id": meta["id"],
                 "path": meta["path"],
@@ -174,7 +181,7 @@ async def orchestrate_search(query: str, category: str) -> dict:
                 "description": meta["description"],
                 "author": meta["author"],
                 "url": f"/images/{filename}",
-                "score": float(hit["score"])
+                "score": normalized_score
             })
             if top_metadata is None:
                 top_metadata = meta

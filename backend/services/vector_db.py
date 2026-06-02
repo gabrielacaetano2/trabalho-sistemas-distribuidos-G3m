@@ -60,41 +60,16 @@ def upsert_image_vector(image_id: int, vector: list):
     )
 
 def search_similar_images(vector: list, limit: int = 6):
-    """Realiza busca vetorial baseada na similaridade cosseno"""
+    """Realiza busca vetorial baseada na similaridade cosseno com score threshold de 0.20"""
     client = get_qdrant_client()
 
     try:
         result = client.query_points(
             collection_name=settings.COLLECTION_NAME,
             query=vector,
-            limit=limit
+            limit=limit,
+            score_threshold=0.25
         )
-
-        return [
-            {
-                "image_id": hit.payload["image_id"],
-                "score": hit.score
-            }
-            for hit in result.points
-        ]
-
-    except Exception as e:
-        print(f"Erro ao buscar no Qdrant: {e}")
-        return []
-
-def search_similar_images(vector: list, limit: int = 6):
-    client = get_qdrant_client()
-
-    try:
-        result = client.query_points(
-            collection_name=settings.COLLECTION_NAME,
-            query=vector,
-            limit=limit
-        )
-
-        print("=== QDRANT RESULT ===")
-        print(result)
-        print("=====================")
 
         return [
             {
