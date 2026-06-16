@@ -1,41 +1,65 @@
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.exceptions import UnexpectedResponse
+
 from backend.config import settings
-import time
+
 import os
 
 _use_local_qdrant = False
 
+
 def get_qdrant_client():
-    """Conecta ao Qdrant remoto. Se falhar, utiliza armazenamento local no disco"""
+    """
+    Conecta ao Qdrant.
+    Fallback local caso o servidor esteja offline.
+    """
+
     global _use_local_qdrant
+
     if _use_local_qdrant:
         return QdrantClient(path="data/qdrant_local")
-        
+
     try:
-        # Tenta conectar rápido
-        client = QdrantClient(url=settings.QDRANT_URL, timeout=2.0)
+        client = QdrantClient(
+            url=settings.QDRANT_URL,
+            timeout=3.0
+        )
+
         client.get_collections()
+
         return client
+
     except Exception:
-        print("[FALLBACK] Qdrant server offline. Utilizando Qdrant local (em-disco) na pasta: data/qdrant_local")
+        print(
+            "[FALLBACK] Qdrant offline. Utilizando armazenamento local."
+        )
+
         _use_local_qdrant = True
+
         os.makedirs("data/qdrant_local", exist_ok=True)
+
         return QdrantClient(path="data/qdrant_local")
 
+
 def init_vector_db():
-    """Garante que a colecao no Qdrant para embeddings de imagens exista"""
+    """
+    Cria coleção vetorial se não existir.
+    """
+
     client = get_qdrant_client()
+
     collection_name = settings.COLLECTION_NAME
-    
+
     try:
-        # Tenta buscar a colecao
-        client.get_collection(collection_name=collection_name)
-        print(f"Colecao '{collection_name}' no Qdrant ja existe.")
+        client.get_collection(collection_name)
+
+        print(f"Coleção '{collection_name}' já existe.")
+
     except (UnexpectedResponse, Exception):
-        # Cria se nao existir (OpenCLIP clip-ViT-B-32 gera embeddings de 512 dimensoes)
-        print(f"Criando colecao '{collection_name}' no Qdrant (dimensao: 512)...")
+
+        print(f"Criando coleção '{collection_name}'...")
+
         client.create_collection(
             collection_name=collection_name,
             vectors_config=models.VectorParams(
@@ -43,42 +67,103 @@ def init_vector_db():
                 distance=models.Distance.COSINE
             )
         )
-        print(f"Colecao '{collection_name}' criada com sucesso.")
 
-def upsert_image_vector(image_id: int, vector: list):
-    """Insere ou atualiza o vetor de embedding de uma imagem no Qdrant"""
+        print("Coleção criada com sucesso.")
+
+
+def upsert_image_vector(
+    image_id: int,
+    vector: list,
+    filename: str,
+    description: str,
+    author: str,
+    path: str
+):
+    """
+    Salva vetor + payload completo.
+    """
+
     client = get_qdrant_client()
+
     client.upsert(
         collection_name=settings.COLLECTION_NAME,
         points=[
             models.PointStruct(
                 id=image_id,
                 vector=vector,
-                payload={"image_id": image_id}
+                payload={
+                    "image_id": image_id,
+                    "filename": filename,
+                    "description": description,
+                    "author": author,
+                    "path": path
+                }
             )
         ]
     )
 
-def search_similar_images(vector: list, limit: int = 6):
-    """Realiza busca vetorial baseada na similaridade cosseno com score threshold de 0.20"""
+
+def search_similar_images(
+    vector: list,
+    limit: int = 10,
+    score_threshold: float = 0.25,
+    fallback_threshold: float = 0.05
+):
+    """
+    Busca vetorial semântica.
+    """
+
     client = get_qdrant_client()
 
     try:
-        result = client.query_points(
-            collection_name=settings.COLLECTION_NAME,
-            query=vector,
+        result = _query_points(
+            client=client,
+            vector=vector,
             limit=limit,
-            score_threshold=0.25
+            score_threshold=score_threshold
         )
 
-        return [
-            {
-                "image_id": hit.payload["image_id"],
-                "score": hit.score
-            }
-            for hit in result.points
-        ]
+        if not result.points and fallback_threshold < score_threshold:
+            result = _query_points(
+                client=client,
+                vector=vector,
+                limit=limit,
+                score_threshold=fallback_threshold
+            )
+
+        return _format_points(result.points)
 
     except Exception as e:
-        print(f"Erro ao buscar no Qdrant: {e}")
+        print(f"Erro Qdrant: {e}")
+
         return []
+
+
+def _query_points(
+    client,
+    vector: list,
+    limit: int,
+    score_threshold: float
+):
+    return client.query_points(
+        collection_name=settings.COLLECTION_NAME,
+        query=vector,
+        limit=limit,
+        score_threshold=score_threshold
+    )
+
+
+def _format_points(points):
+    formatted = []
+
+    for hit in points:
+        formatted.append({
+            "image_id": hit.payload.get("image_id"),
+            "filename": hit.payload.get("filename"),
+            "description": hit.payload.get("description"),
+            "author": hit.payload.get("author"),
+            "path": hit.payload.get("path"),
+            "score": float(hit.score)
+        })
+
+    return formatted

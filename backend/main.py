@@ -113,7 +113,7 @@ async def search_images(req: SearchRequest):
     if not query:
         raise HTTPException(status_code=400, detail="A query não pode estar vazia.")
 
-    cache_key = f"{req.category}:{query}"
+    cache_key = f"search-v6:{req.category}:{query}"
     cached = get_cached_search(cache_key)
     if cached:
         return cached
@@ -141,39 +141,65 @@ async def search_images(req: SearchRequest):
 @app.post("/index")
 async def index_image(req: IndexRequest):
     """
-    Indexa uma nova imagem na base vetorial (Qdrant) e relacional (PostgreSQL).
-    A imagem deve estar previamente copiada para data/images/.
+    Indexa imagem utilizando o embedding visual do arquivo.
     """
-    # Tenta primeiro o caminho local (dev) depois /data/images (Docker)
-    local_path = os.path.join("data", "images", req.filename)
-    docker_path = os.path.join("/data", "images", req.filename)
-    image_path = local_path if os.path.exists(local_path) else docker_path
+
+    local_path = os.path.join(
+        "data",
+        "images",
+        req.filename
+    )
+
+    docker_path = os.path.join(
+        "/data",
+        "images",
+        req.filename
+    )
+
+    image_path = (
+        local_path
+        if os.path.exists(local_path)
+        else docker_path
+    )
 
     if not os.path.exists(image_path):
         raise HTTPException(
             status_code=404,
-            detail=f"Imagem '{req.filename}' não encontrada. Copie para data/images/."
+            detail=f"Imagem '{req.filename}' não encontrada."
         )
 
     try:
+
         vector = generate_image_embedding(image_path)
+
         image_id = add_image_metadata(
             path=image_path,
             filename=req.filename,
             description=req.description,
             author=req.author
         )
-        upsert_image_vector(image_id=image_id, vector=vector)
+
+        upsert_image_vector(
+            image_id=image_id,
+            vector=vector,
+            filename=req.filename,
+            description=req.description,
+            author=req.author,
+            path=image_path
+        )
 
         return {
             "status": "success",
-            "message": f"Imagem '{req.filename}' indexada com sucesso!",
+            "message": f"Imagem '{req.filename}' indexada com sucesso.",
             "id": image_id
         }
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao indexar: {str(e)}")
-
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao indexar: {str(e)}"
+        )
+    
 @app.get("/images")
 def get_images():
     """Retorna metadados de todas as imagens indexadas."""

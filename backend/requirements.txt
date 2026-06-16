@@ -24,3 +24,8 @@ mcp[cli]>=1.0.0
 
 # HTTP
 httpx>=0.24.1
+
+deep-translator
+numpy
+
+langchain-ollama

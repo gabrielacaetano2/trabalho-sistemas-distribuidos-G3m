@@ -284,7 +284,7 @@ function App() {
                     <div className="card-img-wrapper">
                       <img src={img.url} alt={img.description} />
                       {img.score !== undefined && (
-                        <div className="card-score">{(img.score * 100).toFixed(1)}% similar</div>
+                        <div className="card-score">{(img.similarity).toFixed(1)}% similar</div>
                       )}
                     </div>
                     <div className="card-info">

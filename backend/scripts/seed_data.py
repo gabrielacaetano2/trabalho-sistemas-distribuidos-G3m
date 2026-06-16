@@ -38,7 +38,7 @@ SAMPLE_IMAGES = [
     {
         "filename": "office_collaboration.jpg",
         "url": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&q=80",
-        "description": "Equipe de profissionais trabalhando juntos em volta de uma mesa de escritorio corporativo discutindo projetos em notebooks.",
+        "description": "Equipe de profissionais trabalhando juntos em volta de uma mesa de escritorio corporativo discutindo projetos em notebooks, com pessoas, bracos e maos humanas visiveis colaborando.",
         "author": "Annie Spratt"
     },
     {
@@ -68,8 +68,14 @@ SAMPLE_IMAGES = [
     {
         "filename": "creative_brainstorm.jpg",
         "url": "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=800&q=80",
-        "description": "Designers criativos colando post-its coloridos em uma parede branca de vidro durante brainstorm de ideias.",
+        "description": "Designers criativos usando maos humanas para colar post-its coloridos em uma parede branca de vidro durante brainstorm de ideias.",
         "author": "Startups Stock Photos"
+    },
+    {
+        "filename": "duck.jpeg",
+        "url": None,
+        "description": "Pato amarelo de brinquedo, um animal representado como pato, com corpo amarelo e bico laranja.",
+        "author": "Arquivo local"
     }
 ]
 
@@ -107,6 +113,13 @@ def seed_database():
         
         # Download da imagem caso nao exista no disco
         if not os.path.exists(dest_path):
+            if not img_info["url"]:
+                print(
+                    f"Imagem local ausente e sem URL para download: "
+                    f"{img_info['filename']}"
+                )
+                continue
+
             print(f"Baixando imagem [{idx+1}/{len(SAMPLE_IMAGES)}]: {img_info['filename']}...")
             try:
                 # Customizar User-Agent para evitar bloqueio do servidor Unsplash
@@ -137,7 +150,14 @@ def seed_database():
             )
             
             print(f"Inserindo vetor no Qdrant (ID: {img_id})...")
-            upsert_image_vector(image_id=img_id, vector=vector)
+            upsert_image_vector(
+                image_id=img_id,
+                vector=vector,
+                filename=img_info["filename"],
+                description=img_info["description"],
+                author=img_info["author"],
+                path=dest_path
+            )
             
             print(f"Indexacao bem sucedida para a imagem ID {img_id}!\n")
         except Exception as e:
