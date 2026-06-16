@@ -64,3 +64,19 @@ def set_cached_search(cache_key: str, results: dict, ttl: int = 300):
         print(f"Cache salvo para '{cache_key}' (TTL: {ttl}s).")
     except Exception as e:
         print(f"Falha ao salvar cache no Redis: {e}")
+
+
+def clear_search_cache() -> int:
+    """Remove apenas entradas de cache de busca."""
+    client = get_redis_client()
+    if not client:
+        raise RuntimeError("Redis indisponível.")
+
+    deleted = 0
+
+    for key in client.scan_iter(match="search:*", count=100):
+        deleted += client.delete(key)
+
+    print(f"Cache de busca limpo. Chaves removidas: {deleted}.")
+
+    return deleted

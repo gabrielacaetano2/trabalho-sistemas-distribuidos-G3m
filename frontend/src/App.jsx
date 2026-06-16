@@ -14,7 +14,8 @@ import {
   Image as ImageIcon,
   CheckCircle,
   HelpCircle,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react'
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
   const [results, setResults] = useState([])
   const [explanation, setExplanation] = useState('')
   const [mcpInfo, setMcpInfo] = useState(null)
+  const [isClearingCache, setIsClearingCache] = useState(false)
   
   // Imagem selecionada para detalhes na barra lateral
   const [selectedImage, setSelectedImage] = useState(null)
@@ -156,6 +158,29 @@ function App() {
     }
   }
 
+  const handleClearCache = async () => {
+    setIsClearingCache(true)
+
+    try {
+      const response = await fetch('/api/cache/clear', {
+        method: 'POST'
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        alert(`Cache Redis limpo. Chaves removidas: ${data.deleted_keys}`)
+      } else {
+        alert(data.detail || 'Erro ao limpar cache.')
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Falha de comunicação ao limpar cache.')
+    } finally {
+      setIsClearingCache(false)
+    }
+  }
+
   const handleQuickSearch = (text, cat) => {
     setQuery(text)
     if (cat) setCategory(cat)
@@ -175,9 +200,21 @@ function App() {
             <div className="logo-sub">Distribuído & Semântico</div>
           </div>
         </div>
-        <div className="status-badge">
-          <span className="status-dot"></span>
-          Orquestrador Online
+        <div className="header-actions">
+          <button
+            type="button"
+            className="cache-clear-btn"
+            onClick={handleClearCache}
+            disabled={isClearingCache}
+            title="Limpar cache de busca no Redis"
+          >
+            <Trash2 size={15} />
+            {isClearingCache ? 'Limpando...' : 'Limpar cache'}
+          </button>
+          <div className="status-badge">
+            <span className="status-dot"></span>
+            Orquestrador Online
+          </div>
         </div>
       </header>
 

@@ -22,7 +22,7 @@ from .services.db import init_db, add_image_metadata, get_image_metadata, get_al
 from .services.vector_db import init_vector_db, upsert_image_vector
 from .services.ai import generate_image_embedding
 from .services.mcp_client import list_mcp_tools
-from .services.cache import get_cached_search, set_cached_search
+from .services.cache import get_cached_search, set_cached_search, clear_search_cache
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App FastAPI
@@ -98,6 +98,27 @@ async def list_available_mcp_tools():
     """Lista as ferramentas disponíveis no servidor MCP via protocolo MCP/SSE."""
     tools = await list_mcp_tools()
     return {"mcp_server_tools": tools}
+
+
+@app.post("/cache/clear")
+def clear_cache():
+    """Remove entradas de cache de busca no Redis."""
+    try:
+        deleted = clear_search_cache()
+
+        return {
+            "status": "success",
+            "deleted_keys": deleted
+        }
+
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao limpar cache: {str(e)}"
+        )
 
 
 @app.post("/search")
